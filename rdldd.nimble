@@ -8,3 +8,5 @@ license       = "MIT"
 bin = @["rdldd"]
 srcDir = "./"
 installExt = @["nim"]
+
+include "config.nims"
