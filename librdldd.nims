@@ -1,0 +1,2 @@
+--out:"librdldd.so"
+--app:lib
