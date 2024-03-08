@@ -1,27 +1,46 @@
 ## CLI program that we use to inject `lbrdldd` and get a nice output
-import std/[osproc, strtabs, os, parseopt, strutils]
+import std/[osproc, strtabs, os, parseopt, strutils, selectors, monotimes, times]
+import shared
 
 proc main(program: string, bufferPath: string, timeout: int) =
+  removeFile(bufferPath)
   setCurrentDir(program.expandTilde.parentDir)
+  createNamedPipe(bufferPath, {RUser, WUser})
   let
     process = startProcess(
       program.expandTilde,
       env = newStringTable({
-        "LD_LIBRARY_PATH": getEnv("LD_LIBRARY_PATH") & ":" & getCurrentDir(),
         "LD_PRELOAD": "librdldd.so",
         "RDLDD_PATH": bufferPath}
       ),
-      options = {poEchoCmd, poUsePath, poStdErrToStdOut}
+      options = {poUsePath, poStdErrToStdOut, poDaemon}
     )
+  let theFile = open(bufferPath, fmRead)
+  defer: theFile.close()
   defer: process.close()
-  if timeout == 0:
-    while process.running:
-      discard
-  else:
-    sleep(timeout)
 
-  stdout.write readFile(bufferPath)
-  stdout.flushFile
+  if timeout > 0:
+    let sel = newSelector[int]()
+    defer: sel.close()
+    sel.registerHandle(theFile.getFileHandle(), {Read}, 0)
+
+    var start = getMonoTime()
+    while (let keys = sel.select(100); true):
+      for key in keys:
+        echo theFile.readLine()
+
+      if getMonoTime() - start >= initDuration(milliseconds = timeOut):
+        break
+    try:
+      process.terminate()
+    except:
+      discard
+
+  else:
+    while not theFile.endOfFile():
+      echo theFile.readLine()
+
+
 
 
 proc writeHelp =

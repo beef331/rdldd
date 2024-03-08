@@ -18,3 +18,9 @@ else:
     exec("sudo mv librdldd.so /usr/lib64/")
     selfExec("c -d:release rdldd.nim")
     exec("sudo mv rdldd /usr/bin/")
+
+  task installDebug, "Installs the package":
+    selfExec("c -d:debug librdldd.nim")
+    exec("sudo mv librdldd.so /usr/lib64/")
+    selfExec("c -d:debug rdldd.nim")
+    exec("sudo mv rdldd /usr/bin/")

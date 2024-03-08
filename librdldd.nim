@@ -5,8 +5,8 @@ proc dlsym(lib: pointer, name: cstring): pointer {.importc.}
 
 var
   realDlOpen: proc(_: cstring, flags: int32): pointer {.cdecl.}
-  buffer: string
   found: HashSet[string]
+  file = open(getEnv("RDLDD_PATH", "/tmp/rdldd"), fmWrite)
 
 proc NimMain(){.cdecl, importc.}
 
@@ -15,8 +15,8 @@ proc dlopen(name: cstring, flags: cint): pointer {.cdecl, exportc, dynlib.} =
   if result != nil and name.len > 0:
     let name = $name
     if name notin found:
-      buffer.add name
-      buffer.add "\n"
+      file.writeLine name
+      file.flushFile()
       found.incl name
 
 
@@ -24,8 +24,5 @@ proc init() {.codegendecl:"__attribute__ ((constructor)) $# $#$#", cdecl, export
   realDlOpen = cast[typeof(realDlOpen)](dlSym(cast[pointer](-1), "dlopen"))
   NimMain()
 
-proc close() {.codegendecl:"__attribute__ ((destructor)) $# $#$#", cdecl, exportc, dynlib.} =
-  writeFile(getEnv("RDLDD_PATH"), buffer)
-
-
-
+proc deinit() {.codegendecl:"__attribute__ ((destructor)) $# $#$#", cdecl, exportc, dynlib.} =
+  file.close()
