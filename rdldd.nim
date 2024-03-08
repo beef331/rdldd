@@ -31,14 +31,15 @@ proc main(program: string, bufferPath: string, timeout: int) =
 
       if getMonoTime() - start >= initDuration(milliseconds = timeOut):
         break
-    try:
-      process.terminate()
-    except:
-      discard
 
   else:
     while not theFile.endOfFile():
       echo theFile.readLine()
+
+  try:
+    process.kill()
+  except:
+    discard
 
 
 
