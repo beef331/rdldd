@@ -1,24 +1,37 @@
 ## CLI program that we use to inject `lbrdldd` and get a nice output
-import std/[osproc, strtabs, os, parseopt, strutils, selectors, monotimes, times]
+import std/[osproc, strtabs, os, parseopt, strutils, selectors, monotimes, times, sets]
 import shared
 
-proc main(program: string, bufferPath: string, timeout: int) =
+proc main(program: string, bufferPath: string, timeout: int, showOut: bool) =
   removeFile(bufferPath)
-  setCurrentDir(program.expandTilde.parentDir)
+  let currDir = getCurrentDir()
+  if not program.isRelativeTo(currDir):
+    setCurrentDir(program.expandTilde.parentDir)
   createNamedPipe(bufferPath, {RUser, WUser})
   let
-    process = startProcess(
-      program.expandTilde,
-      env = newStringTable({
-        "LD_PRELOAD": "librdldd.so",
-        "RDLDD_PATH": bufferPath}
-      ),
-      options = {poUsePath, poStdErrToStdOut, poDaemon}
-    )
+    flags = block:
+      var flags = {poUsePath, poStdErrToStdOut, poDaemon}
+      if showOut:
+        flags.incl poParentStreams
+      flags
+    process =
+      try:
+        startProcess(
+          program.expandTilde,
+          env = newStringTable({
+            "LD_PRELOAD": "librdldd.so",
+            "RDLDD_PATH": bufferPath}
+          ),
+          options = flags)
+      except CatchableError as e:
+        echo "Could not start program: " & e.msg
+        return
+
   let theFile = open(bufferPath, fmRead)
   defer: theFile.close()
   defer: process.close()
 
+  var printed: HashSet[string]
   if timeout > 0:
     let sel = newSelector[int]()
     defer: sel.close()
@@ -27,14 +40,23 @@ proc main(program: string, bufferPath: string, timeout: int) =
     var start = getMonoTime()
     while (let keys = sel.select(100); true):
       for key in keys:
-        echo theFile.readLine()
+        try:
+          let lib = theFile.readLine()
+          if lib notin printed:
+            echo lib
+            printed.incl lib
+        except:
+          discard
 
       if getMonoTime() - start >= initDuration(milliseconds = timeOut):
         break
 
   else:
     while not theFile.endOfFile():
-      echo theFile.readLine()
+      let lib = theFile.readLine()
+      if lib notin printed:
+        echo lib
+        printed.incl lib
 
   try:
     process.kill()
@@ -55,6 +77,7 @@ rdldd [options] program
 -h, --help Shows this message.
 -b, --bufferPath Where the program writes it's intermediate buffer.
 -t, --timeout How long to wait after a program starts to stop it.
+-s, --stdout Write the stdout of the program
 """
 
 
@@ -65,6 +88,7 @@ proc parseIt() =
     program = ""
     buffer = "/tmp/rdldd"
     timeout = 1000
+    showOut = false
 
   for kind, key, val in p.getopt():
     case kind
@@ -86,12 +110,14 @@ proc parseIt() =
       of "h", "help":
         writeHelp()
         return
+      of "s", "stdout":
+        showOut = true
 
     of cmdEnd: assert(false) # cannot happen
 
   if program == "":
     writeHelp()
   else:
-    main(program, buffer, timeout)
+    main(program, buffer, timeout, showOut)
 
 parseIt()
