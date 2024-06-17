@@ -2,6 +2,8 @@
 import std/[osproc, strtabs, os, parseopt, strutils, selectors, monotimes, times, sets]
 import shared
 
+const defaultTimeout = 100
+
 proc main(program: string, bufferPath: string, timeout: int, showOut: bool) =
   removeFile(bufferPath)
   let currDir = getCurrentDir()
@@ -10,7 +12,7 @@ proc main(program: string, bufferPath: string, timeout: int, showOut: bool) =
   createNamedPipe(bufferPath, {RUser, WUser})
   let
     flags = block:
-      var flags = {poUsePath, poStdErrToStdOut, poDaemon}
+      var flags = {poUsePath, poDaemon}
       if showOut:
         flags.incl poParentStreams
       flags
@@ -28,8 +30,9 @@ proc main(program: string, bufferPath: string, timeout: int, showOut: bool) =
         return
 
   let theFile = open(bufferPath, fmRead)
-  defer: theFile.close()
-  defer: process.close()
+  defer:
+    theFile.close()
+    process.close()
 
   var printed: HashSet[string]
   if timeout > 0:
@@ -64,8 +67,6 @@ proc main(program: string, bufferPath: string, timeout: int, showOut: bool) =
     discard
 
 
-
-
 proc writeHelp =
   echo """
 This is a really dumb verions of ldd.
@@ -76,9 +77,9 @@ rdldd [options] program
 
 -h, --help Shows this message.
 -b, --bufferPath Where the program writes it's intermediate buffer.
--t, --timeout How long to wait after a program starts to stop it.
+-t, --timeout How long to wait after a program starts to stop it (default: $#).
 -s, --stdout Write the stdout of the program
-"""
+""" % [$defaultTimeout]
 
 
 proc parseIt() =
@@ -87,7 +88,7 @@ proc parseIt() =
   var
     program = ""
     buffer = "/tmp/rdldd"
-    timeout = 1000
+    timeout = defaultTimeout
     showOut = false
 
   for kind, key, val in p.getopt():

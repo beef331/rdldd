@@ -13,9 +13,16 @@ type
     tlsData: pointer
   Callback = proc(_: ptr Info, size: int, data: pointer): int32 {.cdecl.}
 
+  LinkMap = ptr object
+    lAddr: pointer
+    name: cstring
+    lld: pointer
+    next, prev: LinkMap
+
 proc iteratePhdr(cb: Callback, data: pointer): int32 {.importc: "dl_iterate_phdr", cdecl.}
 
 proc dlsym(lib: pointer, name: cstring): pointer {.importc.}
+proc dlinfo(lib: pointer, request: cint, dest: pointer): cint {.cdecl, importc.}
 
 var
   realDlOpen: proc(_: cstring, flags: int32): pointer {.cdecl.}
@@ -26,8 +33,11 @@ proc NimMain(){.cdecl, importc.}
 proc dlopen(name: cstring, flags: cint): pointer {.cdecl, exportc, dynlib.} =
   result = realDlOpen(name, flags)
   if result != nil and name.len > 0:
-    file.writeLine name
-    file.flushFile()
+    var linkMap: LinkMap
+    discard dlInfo(result, 2, addr linkMap)
+    if linkMap != nil:
+      file.writeLine linkMap.name
+      file.flushFile()
 
 proc callBack(info: ptr Info, size: int, data: pointer): int32 {.cdecl.} =
   if info.name != nil and info.name.len > 0:
